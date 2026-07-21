@@ -7,11 +7,10 @@ from scipy.spatial import distance
 from pycm import ConfusionMatrix
 from pycm.pycm_output import table_print, stat_print
 from pycm.pycm_param import SUMMARY_CLASS, SUMMARY_OVERALL
-import scikitplot as skplt
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-from sklearn.metrics import precision_recall_fscore_support
+from sklearn.metrics import precision_recall_fscore_support, ConfusionMatrixDisplay
 
 
 def flatten(tensor):
@@ -402,11 +401,11 @@ def cal_metrics_MultiCls(pred, gt, occupancy_map, cfg, args, pad_size, dir_name,
         confusion_matrix.relabel(num2pdb_v1)
 
         lut_classes = np.asarray(classes)
-        skplt.metrics.plot_confusion_matrix(lut_classes[gt_particle_classes],
-                                            lut_classes[predicted_particle_classes],
-                                            labels=cfg["classes_sort"],
-                                            figsize=(20, 20), text_fontsize=18, hide_zeros=True,
-                                            hide_counts=False)
+        fig, ax = plt.subplots(figsize=(20, 20))
+        ConfusionMatrixDisplay.from_predictions(lut_classes[gt_particle_classes],
+                                                lut_classes[predicted_particle_classes],
+                                                labels=cfg["classes_sort"],
+                                                ax=ax, text_kw={"fontsize": 18})
         plt.savefig(f'{save_dir}/{dir_name}/loc_cls//plain_cm_padsize{pad_size}_segThresh{args.threshold}.png')
 
         # Prepare confusion matrix prints

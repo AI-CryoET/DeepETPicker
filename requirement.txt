@@ -2,13 +2,13 @@ matplotlib
 pandas
 mrcfile
 scikit-image
-pillow==8.3.2
-pycm
-scikit-plot
+pillow
+pycm==3.0
 pyqtgraph==0.12.1
 PyQt5==5.15.4
 batchgenerators==0.21
 tinyaes
 pytorch_lightning==1.1.0
-opencv-python==4.2.0.34
+opencv-python
 numpy==1.24.0
+scipy==1.15.3

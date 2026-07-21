@@ -19,6 +19,12 @@ from PyQt5.QtCore import pyqtSlot
 from skimage import filters
 import os
 import threading, inspect, time
+
+# opencv-python bundles its own (incomplete) Qt xcb plugin and points
+# QT_QPA_PLATFORM_PLUGIN_PATH at it as a side effect of `import cv2`, which
+# breaks PyQt5's own working xcb plugin. Drop that override so Qt falls back
+# to the plugins shipped with PyQt5.
+os.environ.pop('QT_QPA_PLATFORM_PLUGIN_PATH', None)
 from train import *
 from test import *
 from utils.coordFormatConvert import *

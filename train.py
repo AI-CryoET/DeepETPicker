@@ -52,7 +52,6 @@ class UNetExperiment(pl.LightningModule):
         super(UNetExperiment, self).__init__()
         self.save_hyperparameters()
         self.model = get_model(args)
-        print(self.model)
 
         if args.loss_func_seg == 'Dice':
             self.loss_function_seg = DiceLoss(args=args)
@@ -63,6 +62,8 @@ class UNetExperiment(pl.LightningModule):
             self.thresholds = np.linspace(0.2, 0.80, 13)
         self.partical_volume = 4 / 3 * np.pi * (self.val_cfg["label_diameter"] / 2) ** 3
         self.args = args
+
+        self.validation_step_outputs = []
 
     def forward(self, x):
         return self.model(x)
@@ -153,23 +154,23 @@ class UNetExperiment(pl.LightningModule):
                     tensorboard.add_image('img_label_seg', img_label_seg, self.current_epoch, dataformats="CHW")
 
             if args.num_classes > 1:
-                return self._nms_v2(self.seg_output[:, 1:], kernel=args.meanPool_kernel, mp_num=6, positions=index)
+                nms_out = self._nms_v2(self.seg_output[:, 1:], kernel=args.meanPool_kernel, mp_num=6, positions=index)
             else:
-                return self._nms_v2(self.seg_output[:, :], kernel=args.meanPool_kernel, mp_num=6, positions=index)
+                nms_out = self._nms_v2(self.seg_output[:, :], kernel=args.meanPool_kernel, mp_num=6, positions=index)
 
-    def validation_step_end(self, outputs):
-        args = self.args
-        if 'test' in args.test_mode:
-            return outputs
+            if 'test' in args.test_mode:
+                self.validation_step_outputs.append(nms_out)
 
-    def validation_epoch_end(self, epoch_output):
+            return nms_out
+
+    def on_validation_epoch_end(self):
         args = self.args
         with torch.no_grad():
             if 'test' in args.test_mode:
                 if args.meanPool_NMS:
                     if args.num_classes == 1:
                         # coords_out: [N, 5]
-                        coords_out = torch.cat(epoch_output, dim=0).detach().cpu().numpy()
+                        coords_out = torch.cat(self.validation_step_outputs, dim=0).detach().cpu().numpy()
                         if coords_out.shape[0] > 50000:
                             loc_p, loc_r, loc_f1, avg_dist = 1e-10, 1e-10, 1e-10, 100
                         else:
@@ -193,11 +194,12 @@ class UNetExperiment(pl.LightningModule):
                         self.log(f'cls_pr_alpha{args.prf1_alpha:.1f}', pr, on_step=False, on_epoch=True)
                         time.sleep(0.5)
                     else:
-                        coords_out = torch.cat(epoch_output, dim=0).detach().cpu().numpy()
+                        coords_out = torch.cat(self.validation_step_outputs, dim=0).detach().cpu().numpy()
                         loc_p, loc_r, loc_f1, loc_miss, avg_dist, gt_classes, pred_classes, self.num2pdb, cls_f1 = \
                             cal_metrics_MultiCls(coords_out, self.gt_coords, self.occupancy_map, self.cfg, args,
                                                  args.pad_size, self.dir_name, self.partical_volume)
                         self.log('cls_f1', cls_f1, on_step=False, on_epoch=True)
+            self.validation_step_outputs.clear()
 
     def train_dataloader(self):
         args = self.args
@@ -352,14 +354,11 @@ def train_func(args, stdout=None):
     runner = Trainer(min_epochs=min(50, args.max_epoch),
                      max_epochs=args.max_epoch,
                      logger=tb_logger,
-                     gpus=args.gpu_id,
-                     checkpoint_callback=checkpoint_callback,
-                     callbacks=[lr_monitor],
-                     accelerator='dp',
+                     devices=1,
+                     callbacks=[lr_monitor, checkpoint_callback],
                      precision=32,
-                     profiler=True,
-                     sync_batchnorm=True,
-                     resume_from_checkpoint=args.checkpoints)
+                     profiler="simple",
+                     sync_batchnorm=True)
 
 
     try:

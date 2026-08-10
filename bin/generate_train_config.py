@@ -35,6 +35,8 @@ if __name__ == "__main__":
     train_config['gpu_ids'] = ','.join([str(i) for i in args.gpu_id])
     print(train_config['gpu_ids'])
 
+    if args.dset_name is None:
+        raise ValueError(f"No dset_name given, exiting ...")
 
     with open(f"{args.cfg_save_path}/{args.dset_name}.py", 'w') as f:
         f.write("train_configs=")

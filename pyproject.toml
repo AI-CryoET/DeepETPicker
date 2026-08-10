@@ -1,0 +1,25 @@
+[project]
+name = "deepetpicker"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "matplotlib",
+  "pandas",
+  "mrcfile",
+  "scikit-image",
+  "pillow",
+  "pycm==3.0",
+  "pyqtgraph==0.12.1",
+  "PyQt5==5.15.4",
+  "batchgenerators==0.21",
+  "tinyaes",
+  "pytorch_lightning>=2.5,<3",
+  "opencv-python",
+  "numpy==1.24.0",
+  "scipy==1.15.3",
+  "setuptools<81",
+  "torchvision>=0.28.0",
+  "tensorboard>=2.21.0",
+]

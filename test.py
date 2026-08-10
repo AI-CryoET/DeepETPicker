@@ -20,6 +20,14 @@ import json
 from dataset.dataloader_DynamicLoad import Dataset_ClsBased
 
 
+_torch_load = torch.load
+
+def _torch_load_trusted(*args, **kwargs):
+    kwargs['weights_only'] = False
+    return _torch_load(*args, **kwargs)
+
+torch.load = _torch_load_trusted
+
 def test_func(args, stdout=None):
     if stdout is not None:
         save_stdout = sys.stdout
@@ -196,8 +204,7 @@ def test_func(args, stdout=None):
 
                 # model = UNetTest().model
                 model.eval()
-                runner = Trainer(gpus=args.gpu_id, #
-                                 accelerator='dp'
+                runner = Trainer(accelerator='gpu', devices=1
                                  )
                 os.makedirs(f'result/{dataset}/{model_name}/', exist_ok=True)
 

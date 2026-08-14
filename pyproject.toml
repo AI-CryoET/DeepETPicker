@@ -11,15 +11,19 @@ dependencies = [
   "scikit-image",
   "pillow",
   "pycm==3.0",
-  "pyqtgraph==0.12.1",
-  "PyQt5==5.15.4",
   "batchgenerators==0.21",
   "tinyaes",
   "pytorch_lightning>=2.5,<3",
-  "opencv-python",
-  "numpy==1.24.0",
-  "scipy==1.15.3",
+  "opencv-python>=4.10",
+  "numpy>2",
+  "scipy",
   "setuptools<81",
   "torchvision>=0.28.0",
   "tensorboard>=2.21.0",
+]
+
+[dependency-groups]
+gui = [
+  "pyqtgraph==0.12.1",
+  "PyQt5>=5",
 ]

@@ -30,7 +30,7 @@ class UNetExperiment(pl.LightningModule):
     def __init__(self, args):
         if args.f_maps is None:
             args.f_maps = [32, 64, 128, 256]
-        print(args.pad_size)
+        print(f"{args.pad_size=}")
 
         if len(args.configs) > 0:
             with open(args.configs, 'r') as f:
@@ -56,11 +56,11 @@ class UNetExperiment(pl.LightningModule):
         if args.loss_func_seg == 'Dice':
             self.loss_function_seg = DiceLoss(args=args)
 
-        if 'gaussian' in self.val_cfg["label_type"]:
+        if 'gaussian' in args.label_type:
             self.thresholds = np.linspace(0.15, 0.45, 7)
-        elif 'sphere' in self.val_cfg["label_type"]:
+        elif 'sphere' in args.label_type:
             self.thresholds = np.linspace(0.2, 0.80, 13)
-        self.partical_volume = 4 / 3 * np.pi * (self.val_cfg["label_diameter"] / 2) ** 3
+        self.partical_volume = 4 / 3 * np.pi * (args.label_diameter / 2) ** 3
         self.args = args
 
         self.validation_step_outputs = []
@@ -340,14 +340,14 @@ def train_func(args, stdout=None):
 
     model = UNetExperiment(args)
     logger_name = "{}_{}_BlockSize{}_{}Loss_MaxEpoch{}_bs{}_lr{}_IP{}_bg{}_coord{}_Softmax{}_{}_{}_TN{}".format(
-        model.train_cfg["dset_name"], args.network, args.block_size, args.loss_func_seg, args.max_epoch,
+        model.args.dset_name, args.network, args.block_size, args.loss_func_seg, args.max_epoch,
         args.batch_size,
         args.learning_rate,
         int(args.use_IP), int(args.use_bg), int(args.use_coord),
         int(args.use_softmax), args.norm, args.others, args.sel_train_num)
 
-    os.makedirs(f"{model.train_cfg['base_path']}/runs/{model.train_cfg['dset_name']}", exist_ok=True)
-    tb_logger = loggers.TensorBoardLogger(f"{model.train_cfg['base_path']}/runs/{model.train_cfg['dset_name']}",
+    os.makedirs(f"{model.args.base_path}/runs/{model.args.dset_name}", exist_ok=True)
+    tb_logger = loggers.TensorBoardLogger(f"{model.args.base_path}/runs/{model.args.dset_name}",
                                           name=logger_name)
     lr_monitor = LearningRateMonitor(logging_interval='step')
 

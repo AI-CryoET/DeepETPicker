@@ -20,6 +20,8 @@ dependencies = [
   "setuptools<81",
   "torchvision>=0.28.0",
   "tensorboard>=2.21.0",
+  "lightning>=2.6.5",
+  "jsonargparse>=4.50.0",
 ]
 
 [dependency-groups]

@@ -198,8 +198,10 @@ class Dataset_ClsBased(data.Dataset):
         else:
             if not args.input_cat:
                 print([os.path.join(tomo_path, dir_names[i] + tomo_format) for i in self.data_range])
-                self.origin = [mrcfile.open(os.path.join(tomo_path, dir_names[i] + tomo_format)) for i
-                           in self.data_range]
+                self.origin = []
+                for i in self.data_range:
+                    with mrcfile.open(os.path.join(tomo_path, dir_names[i] + tomo_format)) as f:
+                        self.origin.append(f.data)
             else:
                 for idx, p_suffix in enumerate(args.input_cat_items):
                     p_suffix = p_suffix.rstrip(',')
@@ -240,9 +242,10 @@ class Dataset_ClsBased(data.Dataset):
             self.label = [
                 np.zeros_like(self.origin[idx]) for idx, _ in enumerate(self.data_range)]
         else:
-            self.label = [
-                mrcfile.open(os.path.join(label_path, dir_names[idx] + tomo_format)) for idx
-                in self.data_range]
+            self.label = []
+            for idx in self.data_range:
+                with mrcfile.open(os.path.join(label_path, dir_names[idx] + tomo_format)) as f:
+                    self.label.append(f.data)
 
         # load paf
         if self.use_paf:
@@ -265,9 +268,10 @@ class Dataset_ClsBased(data.Dataset):
                         pad_size:shape_pad[2] - pad_size] = cm.data
                         self.paf_label.append(temp)
             else:
-                self.paf_label = [
-                    mrcfile.open(os.path.join(paf_path, dir_names[idx] + tomo_format)) for idx
-                    in self.data_range]
+                self.paf_label = []
+                for idx in self.data_range:
+                    with mrcfile.open(os.path.join(paf_path, dir_names[idx] + tomo_format)) as f:
+                        self.paf_label.append(f.data)
 
         # Generate BlockData
         self.coords = []
@@ -430,21 +434,21 @@ class Dataset_ClsBased(data.Dataset):
                       point[1] - self.shift:point[1] + self.shift,
                       point[0] - self.shift:point[0] + self.shift]
             else:
-                img = self.origin[idx].data[point[2] - self.shift:point[2] + self.shift,
+                img = self.origin[idx][point[2] - self.shift:point[2] + self.shift,
                       point[1] - self.shift:point[1] + self.shift,
                       point[0] - self.shift:point[0] + self.shift]
 
-            if len(self.label[idx].data.shape) == 4:
-                label = self.label[idx].data[:, point[2] - self.shift:point[2] + self.shift,
+            if len(self.label[idx].shape) == 4:
+                label = self.label[idx][:, point[2] - self.shift:point[2] + self.shift,
                         point[1] - self.shift:point[1] + self.shift,
                         point[0] - self.shift:point[0] + self.shift]
             else:
-                label = self.label[idx].data[point[2] - self.shift:point[2] + self.shift,
+                label = self.label[idx][point[2] - self.shift:point[2] + self.shift,
                         point[1] - self.shift:point[1] + self.shift,
                         point[0] - self.shift:point[0] + self.shift]
             position = [point[2], point[1], point[0]]
             if self.use_paf:
-                paf_label = self.paf_label[idx].data[point[2] - self.shift:point[2] + self.shift,
+                paf_label = self.paf_label[idx][point[2] - self.shift:point[2] + self.shift,
                         point[1] - self.shift:point[1] + self.shift,
                         point[0] - self.shift:point[0] + self.shift]
         # print(img.shape, label.shape)
@@ -509,7 +513,7 @@ class Dataset_ClsBased(data.Dataset):
             #                       np.array([x_max, y_max, z_max]))
             point = [x, y, z]
 
-            img_bg = self.origin[0].data[point[2] - self.shift:point[2] + self.shift,
+            img_bg = self.origin[0][point[2] - self.shift:point[2] + self.shift,
                   point[1] - self.shift:point[1] + self.shift,
                   point[0] - self.shift:point[0] + self.shift]
 
@@ -526,7 +530,7 @@ class Dataset_ClsBased(data.Dataset):
             # point = self.__sample(np.array([x, y, z]),
             #                       np.array([x_max, y_max, z_max]))
             point = [x, y, z]
-            img_ice = self.origin[0].data[point[2] - self.shift:point[2] + self.shift,
+            img_ice = self.origin[0][point[2] - self.shift:point[2] + self.shift,
                      point[1] - self.shift:point[1] + self.shift,
                      point[0] - self.shift:point[0] + self.shift]
 

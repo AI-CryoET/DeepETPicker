@@ -28,26 +28,7 @@ if not sys.warnoptions:
 
 class UNetExperiment(pl.LightningModule):
     def __init__(self, args):
-        if args.f_maps is None:
-            args.f_maps = [32, 64, 128, 256]
-        print(f"{args.pad_size=}")
 
-        if len(args.configs) > 0:
-            with open(args.configs, 'r') as f:
-                self.cfg = json.loads(''.join(f.readlines()).lstrip('train_configs='))
-        else:
-            self.cfg = {}
-        if len(args.train_configs) > 0:
-            with open(args.train_configs, 'r') as f:
-                self.train_cfg = json.loads(''.join(f.readlines()).lstrip('train_configs='))
-        else:
-            self.train_cfg = self.cfg
-
-        if len(args.val_configs) > 0:
-            with open(args.val_configs, 'r') as f:
-                self.val_config = json.loads(''.join(f.readlines()).lstrip('train_configs='))
-        else:
-            self.val_cfg = self.cfg
 
         super(UNetExperiment, self).__init__()
         self.save_hyperparameters()
@@ -131,7 +112,7 @@ class UNetExperiment(pl.LightningModule):
                             COLORS[(idx + 1) if (args.num_classes == 1
                                                  or args.use_paf or
                                                  label_.shape[0] == 1) else idx]).float()
-                    label__ = temp.permute(0, 3, 1, 2).contiguous().cuda()  # [15, 3, y, x]
+                    label__ = temp.permute(0, 3, 1, 2).contiguous().to(self.device)  # [15, 3, y, x]
 
                     seg_output_ = self.seg_output[0, :, 0:(args.block_size - 1):5, :, :]  # sample0 [15, y, x]
                     seg_threshes = [0.5, 0.3, 0.2, 0.15, 0.1, 0.05]
@@ -144,7 +125,7 @@ class UNetExperiment(pl.LightningModule):
                                 COLORS[(idx + 1) if (args.num_classes == 1
                                                      or args.use_paf or
                                                      seg_output_.shape[0] == 1) else idx]).float()
-                        seg_preds.append(temp.permute(0, 3, 1, 2).contiguous().cuda())  # [15, 3, y, x]
+                        seg_preds.append(temp.permute(0, 3, 1, 2).contiguous().to(self.device))  # [15, 3, y, x]
 
                     seg_preds = torch.cat(seg_preds, dim=0)
 
@@ -210,7 +191,7 @@ class UNetExperiment(pl.LightningModule):
                                          use_bg=args.use_bg,
                                          data_split=args.data_split,
                                          use_paf=args.use_paf,
-                                         cfg=self.train_cfg,
+                                         cfg=args.cfg,
                                          args=args)
         return DataLoader(train_dataset,
                           batch_size=args.batch_size,
@@ -229,7 +210,7 @@ class UNetExperiment(pl.LightningModule):
                                        test_use_pad=args.test_use_pad,
                                        pad_size=args.pad_size,
                                        use_paf=args.use_paf,
-                                       cfg=self.val_cfg,
+                                       cfg=args.cfg,
                                        args=args)
 
         self.len_block = val_dataset.test_len
@@ -249,8 +230,8 @@ class UNetExperiment(pl.LightningModule):
     def _nms_v2(self, pred, kernel=3, mp_num=5, positions=None):
         args = self.args
         pred = torch.where(pred > 0.5, 1, 0)
-        meanPool = nn.AvgPool3d(kernel, 1, kernel // 2).cuda()
-        maxPool = nn.MaxPool3d(kernel, 1, kernel // 2).cuda()
+        meanPool = nn.AvgPool3d(kernel, 1, kernel // 2).to(self.device)
+        maxPool = nn.MaxPool3d(kernel, 1, kernel // 2).to(self.device)
         hmax = pred.clone().float()
         for _ in range(mp_num):
             hmax = meanPool(hmax)
@@ -259,7 +240,7 @@ class UNetExperiment(pl.LightningModule):
         keep = ((hmax == pred).float()) * ((pred > 0.1).float())
         coords = keep.nonzero()  # [N, 5]
         if coords.shape[0] > 2000:
-            return torch.zeros([1, 5]).cuda()
+            return torch.zeros([1, 5]).to(self.device)
         coords = coords[coords[:, 2] >= args.pad_size]
         coords = coords[coords[:, 2] < args.block_size - args.pad_size]
         coords = coords[coords[:, 3] >= args.pad_size]
@@ -280,7 +261,7 @@ class UNetExperiment(pl.LightningModule):
 
             return pred_final
         except:
-            return torch.zeros([0, 5]).cuda()
+            return torch.zeros([0, 5]).to(self.device)
 
     def configure_optimizers(self):
         args = self.args
@@ -372,7 +353,9 @@ def train_func(args, stdout=None):
             sys.stderr = save_stderr
             sys.stdout = save_stdout
         return os.getpid()
-    except:
+    except Exception:
+        import traceback
+        traceback.print_exc()
         torch.cuda.empty_cache()
         if stdout is not None:
             stdout.flush()

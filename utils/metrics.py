@@ -22,7 +22,7 @@ def seg_metrics(y_pred, y_true, smooth=1e-7, isTrain=True, threshold=0.5, use_si
     #comment out if your model contains a sigmoid or equivalent activation layer
     if use_sigmoid:
         y_pred = F.sigmoid(y_pred)
-    y_pred = torch.where(y_pred < threshold, torch.zeros(1).cuda(), torch.ones(1).cuda())
+    y_pred = torch.where(y_pred < threshold, torch.zeros(1, device=y_pred.device), torch.ones(1, device=y_pred.device))
 
     #flatten label and prediction tensors
     y_pred = flatten(y_pred)
@@ -54,7 +54,7 @@ def seg_metrics_2d(y_pred, y_true, smooth=1e-7, isTrain=True, threshold=0.5, use
     # comment out if your model contains a sigmoid or equivalent activation layer
     if use_sigmoid:
         y_pred = F.sigmoid(y_pred)
-    y_pred = torch.where(y_pred < threshold, torch.zeros(1).cuda(), torch.ones(1).cuda())
+    y_pred = torch.where(y_pred < threshold, torch.zeros(1, device=y_pred.device), torch.ones(1, device=y_pred.device))
 
     # flatten label and prediction tensors
     y_pred = y_pred.flatten()

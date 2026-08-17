@@ -169,8 +169,8 @@ def cal_metrics_OneCls(pred, ocp, gt_coords, threshold, border_value, particle_v
         return precision, recall, f1, avg_dist
 
 
-def cal_metrics_NMS_OneCls(pred_coords, gt_coords, occupancy_map, cfg):
-    pred_coords = coord_duplication(pred_coords[:, 1:], cfg["ocp_diameter"])
+def cal_metrics_NMS_OneCls(pred_coords, gt_coords, occupancy_map, ocp_diameter):
+    pred_coords = coord_duplication(pred_coords[:, 1:], ocp_diameter)
     centroids = np.array(pred_coords)
 
     gt_particles = [(0, 0, 0)]  # start with a "background" particle

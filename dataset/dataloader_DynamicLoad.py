@@ -25,18 +25,9 @@ class Dataset_ClsBased(data.Dataset):
 
         self.args = args
         self.mode = mode
-        # use_CL CL = cnotrastive learning
-        self.use_CL = args.use_CL
-        if args.use_CL:
-            self.radius = 0
-        else:
-            self.radius = block_size // 5
+        self.radius = block_size // 5
         self.use_bg = use_bg
         self.use_paf = use_paf
-        self.use_CL_DA = args.use_CL_DA
-        self.use_bg_part = args.use_bg_part
-        self.use_ice_part = args.use_ice_part
-        self.Sel_Referance = args.Sel_Referance
 
         pad_size = pad_size[0] if isinstance(pad_size, list) else pad_size
         base_dir = cfg['base_path']
@@ -281,15 +272,11 @@ class Dataset_ClsBased(data.Dataset):
                 for j, point1 in enumerate(self.position[i]):
                     # if sel_train_num > 0 and j >= sel_train_num:
                     #     continue
-                    if args.Sel_Referance:
-                        if j in args.sel_train_num:
+                    if point1[0] == 15:
+                        for _ in range(13):
                             self.coords.append([i, point1[-3], point1[-2], point1[-1]])
                     else:
-                        if point1[0] == 15:
-                            for _ in range(13):
-                                self.coords.append([i, point1[-3], point1[-2], point1[-1]])
-                        else:
-                            self.coords.append([i, point1[-3], point1[-2], point1[-1]])
+                        self.coords.append([i, point1[-3], point1[-2], point1[-1]])
         else:
             if test_use_pad:
                 step_size = block_size - 2 * pad_size
@@ -380,13 +367,6 @@ class Dataset_ClsBased(data.Dataset):
             self.gt_coords = pd.read_csv(os.path.join(coord_path, "%s.coords" % dir_names[self.data_range[0]]),
                      sep='\t', header=None).to_numpy()
 
-        if args.use_bg_part and self.Sel_Referance:
-            self.coords_bg = pd.read_csv(os.path.join(coord_path, dir_names[self.data_range[0]] + '_bg' + coord_format),
-                                         sep='\t', header=None).to_numpy()[:len(self.coords)]
-        if args.use_ice_part and self.Sel_Referance:
-            self.coords_ice = pd.read_csv(os.path.join(coord_path, dir_names[self.data_range[0]] + '_ice' + coord_format),
-                                         sep='\t', header=None).to_numpy()[:len(self.coords)]
-
         if self.mode == 'test_val':
             for i in range(len(self.data_range)):
                 for j, point1 in enumerate(self.position[i]):
@@ -476,11 +456,8 @@ class Dataset_ClsBased(data.Dataset):
 
             label = np.concatenate([label, paf_label], axis=0)
 
-        if self.use_CL_DA:
-            img = self.__DA_SelReference(img)
-
         # random 3D rotation
-        if self.mode == 'train' and not self.use_CL:
+        if self.mode == 'train':
             if self.use_bg:
                 img_label = {'data': img.reshape(1, -1, self.shift * 2, self.shift * 2, self.shift * 2),
                              'seg': label.reshape(1, -1, self.shift * 2, self.shift * 2, self.shift * 2)}
@@ -505,48 +482,7 @@ class Dataset_ClsBased(data.Dataset):
         img = torch.as_tensor(img).float()
         label = torch.as_tensor(label).float()
 
-        if self.use_bg_part and self.Sel_Referance:
-            idx, x, y, z = self.coords_bg[index]
-            z_max, y_max, x_max = self.origin[0].data.shape
-
-            # point = self.__sample(np.array([x, y, z]),
-            #                       np.array([x_max, y_max, z_max]))
-            point = [x, y, z]
-
-            img_bg = self.origin[0][point[2] - self.shift:point[2] + self.shift,
-                  point[1] - self.shift:point[1] + self.shift,
-                  point[0] - self.shift:point[0] + self.shift]
-
-            if self.use_CL_DA:
-                img_bg = self.__DA_SelReference(np.array(img_bg))
-
-            img_bg = np.array(img_bg).reshape(-1, self.shift * 2, self.shift * 2, self.shift * 2)
-            img_bg = torch.as_tensor(img_bg).float()
-
-        if self.use_ice_part and self.Sel_Referance:
-            idx, x, y, z = self.coords_ice[index]
-            z_max, y_max, x_max = self.origin[0].data.shape
-
-            # point = self.__sample(np.array([x, y, z]),
-            #                       np.array([x_max, y_max, z_max]))
-            point = [x, y, z]
-            img_ice = self.origin[0][point[2] - self.shift:point[2] + self.shift,
-                     point[1] - self.shift:point[1] + self.shift,
-                     point[0] - self.shift:point[0] + self.shift]
-
-            if self.use_CL_DA:
-                img_ice = self.__DA_SelReference(np.array(img_ice))
-
-            img_ice = np.array(img_ice).reshape(-1, self.shift * 2, self.shift * 2, self.shift * 2)
-            img_ice = torch.as_tensor(img_ice).float()
-
-        if self.use_bg_part and self.Sel_Referance:
-            if self.use_ice_part:
-                return img, img_bg, img_ice
-            else:
-                return img, img_bg, position
-        else:
-            return img, label, position
+        return img, label, position
 
     def __len__(self):
         return max(len(self.coords), len(self.data))
@@ -557,34 +493,6 @@ class Dataset_ClsBased(data.Dataset):
         data = np.rot90(data, degree[1], (1, 2))
         data = np.rot90(data, degree[2], (0, 2))
         return data
-
-    def __DA_SelReference(self, data):
-        D, H, W = data.shape
-        out = data.reshape(1, D, H, W)
-        out = np.concatenate([out, np.rot90(data, 1, (0, 2)).reshape(1, D, H, W)], axis=0)
-        out = np.concatenate([out, np.rot90(data, 2, (0, 2)).reshape(1, D, H, W)], axis=0)
-        out = np.concatenate([out, np.rot90(data, 3, (0, 2)).reshape(1, D, H, W)], axis=0)
-        out = np.concatenate([out, np.rot90(data, 1, (1, 2)).reshape(1, D, H, W)], axis=0)
-        out = np.concatenate([out, np.rot90(data, 3, (1, 2)).reshape(1, D, H, W)], axis=0)
-        for axis_idx in range(out.shape[0]):
-            data = out[axis_idx]
-            out = np.concatenate([out, data[::-1, :, :].reshape(1, D, H, W)], axis=0)
-            for idx in range(1, 4):
-                out = np.concatenate([out, np.rot90(data, idx, (0, 1)).reshape(1, D, H, W)], axis=0)
-                out = np.concatenate([out, np.rot90(data, idx, (0, 1)).reshape(1, D, H, W)[:, ::-1, :, :]], axis=0)
-        return out
-
-    def __DA_SelReference_inital(self, data):
-        out = data
-        for idx in range(1, 4):
-            out = np.concatenate([out, np.rot90(data, idx, (0, 1))], axis=0)
-            out = np.concatenate([out, np.rot90(data, idx, (1, 2))], axis=0)
-            out = np.concatenate([out, np.rot90(data, idx, (0, 2))], axis=0)
-        out = np.concatenate([out, data[::-1, :, :]], axis=0)
-        out = np.concatenate([out, data[:, ::-1, :]], axis=0)
-        out = np.concatenate([out, data[:, :, ::-1]], axis=0)
-        return out
-
 
     def __sample(self, point, bound):
         # point: z, y, x

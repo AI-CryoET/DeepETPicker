@@ -112,20 +112,10 @@ class BaseOptions():
         self.parser.add_argument('--prf1_alpha', type=float, default=3, help="calculate seg_metrics")
         self.parser.add_argument('--running', type=str2bool, help='whether use LAM', default=False)
 
-        # Contrastive Learning hyper-parameters
         self.parser.add_argument('--checkpoints', type=str, help='Checkpoint directory',
                                  default=None)
         self.parser.add_argument('--checkpoints_version', type=str, help='Checkpoint directory',
                                  default=None)
-        self.parser.add_argument('--cent_feats', type=str, help='Checkpoint directory',
-                                 default=None)
-        self.parser.add_argument('--particle_idx', type=int, default=70, help='Index of reference particle')
-        self.parser.add_argument('--sel_particle_num', type=int, default=100, help='Index of reference particle')
-        self.parser.add_argument('--iteration_idx', type=int, default=0, help='Iteration index')
-        self.parser.add_argument('--cent_kernel', type=int, default=1, help='Iteration index')
-        self.parser.add_argument('--Sel_Referance', type=str2bool, default=False, help='Select Reference Particle')
-        self.parser.add_argument('--step1', type=str2bool, default=False, help='Select Reference Particle')
-        self.parser.add_argument('--step2', type=str2bool, default=False, help='Select Reference Particle')
         self.parser.add_argument('--dir_name', type=str, help='Directory name',
                                  default=None)
         self.parser.add_argument('--stride', type=int, default=8, help='Select Reference Particle')
@@ -134,10 +124,6 @@ class BaseOptions():
                                  default=False)
         self.parser.add_argument('--use_ema', type=str2bool, default=False,
                                  help='use EMA model')
-        self.parser.add_argument('--use_bg_part', type=str2bool, default=False,
-                                 help='use background particle')
-        self.parser.add_argument('--use_ice_part', type=str2bool, default=False,
-                                 help='use ice bg')
         self.parser.add_argument('--use_SimSeg_iteration', type=str2bool, default=False,
                                  help='use SimSeg_iteration')
         self.parser.add_argument('--ema_decay', default=0.999, type=float,
@@ -159,12 +145,7 @@ class BaseOptions():
         self.parser.add_argument('--nms_topK', type=int, help='topK for Gaussian NMS', default=3)
         self.parser.add_argument('--pif_model', type=str, default='', help='pif model for paf-connect')
         self.parser.add_argument('--first_idx', type=int, help='first_idx', default=0)
-        self.parser.add_argument('--use_CL', type=str2bool, default=False, help='Whether use Contrastive Learning')
-        self.parser.add_argument('--use_cluster', type=str2bool, default=False, help='Whether use Contrastive Learning')
-        self.parser.add_argument('--use_CL_DA', type=str2bool, default=False,
-                                 help='Whether use DA for reference particle of Contrastive Learning')
-        self.parser.add_argument('--CL_DA_fmt', type=str, default='mean',
-                                 help='format of calculating similarity map under CL_DA')
+        self.parser.add_argument('--use_cluster', type=str2bool, default=False, help='Whether use clustering')
         self.parser.add_argument('--ResearchTitle', type=str, default='None',
                                  help='format of calculating similarity map under CL_DA')
         self.parser.add_argument('--skip_4v94', type=bool, default=False,

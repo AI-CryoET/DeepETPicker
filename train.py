@@ -312,6 +312,7 @@ def train_func(args, stdout=None):
         sys.stderr = stdout
 
     args.pad_size = args.pad_size[0]
+    torch.set_float32_matmul_precision('high')
     if 'test' in args.test_mode:
         checkpoint_callback = ModelCheckpoint(save_top_k=1,
                                               monitor=f'cls_pr_alpha{args.prf1_alpha:.1f}' if args.num_classes == 1 else 'cls_f1',

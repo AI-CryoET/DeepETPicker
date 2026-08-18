@@ -1,6 +1,4 @@
 from argparse import Namespace
-
-import numpy as np
 from pathlib import Path
 
 import train
@@ -11,7 +9,8 @@ if __name__ == '__main__':
     args = BaseOptions().parser.parse_args([])
 
     # base_dir = Path('/groups/scicompsoft/home/raridenm/projects/cryoet/au_np/SampleDatasets/EMPIAR_10045/')
-    base_dir = Path('/Users/raridenm/projects/cryoet/data/tmp/data/20241206_preprocessed/data')
+    # base_dir = Path('/Users/raridenm/projects/cryoet/data/tmp/data/20241206_preprocessed/data')
+    base_dir = Path('/groups/cryoet/cryoet/code/gouauxlab/deepetpicker/3rd')
 
     CONFIG = {
         "act": "relu",
@@ -28,7 +27,8 @@ if __name__ == '__main__':
         # raises IndexError when the train dataset is built.
         # Full set (~370 GB, needs gpu_a100 -n 12): [0, 16, 15, 16, 15, 16]
         # Just tomogram 0 (~43 GB): train on 0, validate on 0.
-        "data_split": [0, 14, 14, 15, 15, 16],
+        # "data_split": [0, 14, 14, 15, 15, 16],
+        "data_split": [0, 2, 2, 3, 3, 4],
         "de_dup_fmt": "fmt4",
         "de_duplication": False,
         "dset_name": "3rd_train",
@@ -38,14 +38,14 @@ if __name__ == '__main__':
         "in_channels": 1,
         "input_cat": False,
         "input_cat_items": "None",
-        "label_diameter": 3,
-        "label_name": "gaussian3",
-        "label_path": f"{base_dir}/gaussian3",
+        "label_diameter": 9,
+        "label_name": "gaussian9",
+        "label_path": f"{base_dir}/gaussian9",
         "label_type": "gaussian",
         "learning_rate": 0.001,
         "loss_func_seg": "Dice",
         "lw_kernel": 3,
-        "max_epoch": 60,
+        "max_epoch": 5,
         "meanPool_kernel": 5,
         "meanPool_NMS": True,
         "mini_dist": 10,

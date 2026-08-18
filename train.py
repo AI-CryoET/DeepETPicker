@@ -197,7 +197,8 @@ class UNetExperiment(pl.LightningModule):
                           batch_size=args.batch_size,
                           num_workers=8 if args.batch_size >= 32 else 4,
                           shuffle=True,
-                          pin_memory=False)
+                          pin_memory=True,
+                          persistent_workers=True)
 
     def val_dataloader(self):
         args = self.args
@@ -224,7 +225,8 @@ class UNetExperiment(pl.LightningModule):
                                      batch_size=args.val_batch_size,
                                      num_workers=8 if args.batch_size >= 32 else 4,
                                      shuffle=False,
-                                     pin_memory=False)
+                                     pin_memory=True,
+                                     persistent_workers=True)
         return val_dataloader1
 
     def _nms_v2(self, pred, kernel=3, mp_num=5, positions=None):

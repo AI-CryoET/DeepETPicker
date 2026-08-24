@@ -27,8 +27,8 @@ if __name__ == '__main__':
         # raises IndexError when the train dataset is built.
         # Full set (~370 GB, needs gpu_a100 -n 12): [0, 16, 15, 16, 15, 16]
         # Just tomogram 0 (~43 GB): train on 0, validate on 0.
-        # "data_split": [0, 14, 14, 15, 15, 16],
-        "data_split": [0, 2, 2, 3, 3, 4],
+        "data_split": [0, 14, 14, 15, 15, 16],
+        # "data_split": [0, 2, 2, 3, 3, 4],
         "de_dup_fmt": "fmt4",
         "de_duplication": False,
         "dset_name": "3rd_train",
@@ -45,7 +45,7 @@ if __name__ == '__main__':
         "learning_rate": 0.001,
         "loss_func_seg": "Dice",
         "lw_kernel": 3,
-        "max_epoch": 5,
+        "max_epoch": 60,
         "meanPool_kernel": 5,
         "meanPool_NMS": True,
         "mini_dist": 10,

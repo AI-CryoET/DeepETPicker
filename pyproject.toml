@@ -29,3 +29,13 @@ gui = [
   "pyqtgraph==0.12.1",
   "PyQt5>=5",
 ]
+test = [
+  "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+  "gpu: requires a CUDA device (auto-skipped when unavailable)",
+]

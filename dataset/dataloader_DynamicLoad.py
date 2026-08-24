@@ -8,6 +8,12 @@ import warnings
 from batchgenerators.transforms.spatial_transforms import SpatialTransform_2, MirrorTransform
 from torch.utils.data import DataLoader
 
+from concurrent.futures import ThreadPoolExecutor
+
+def _load_mrc(path):
+    """ MUST use `.open()` and NOT `.mmap()` """
+    with mrcfile.open(path) as f:
+        return f.data
 
 class Dataset_ClsBased(data.Dataset):
     def __init__(self,
@@ -134,7 +140,7 @@ class Dataset_ClsBased(data.Dataset):
 
             self.mt = MirrorTransform(axes=(0, 1, 2))
         # to avoid mrcfile warnings
-        warnings.simplefilter('ignore')
+        # warnings.simplefilter('ignore')
 
         if self.mode == 'train' or self.mode == 'test_val' or self.mode == 'val':
             self.position = [
@@ -188,11 +194,14 @@ class Dataset_ClsBased(data.Dataset):
 
         else:
             if not args.input_cat:
-                print([os.path.join(tomo_path, dir_names[i] + tomo_format) for i in self.data_range])
-                self.origin = []
-                for i in self.data_range:
-                    with mrcfile.open(os.path.join(tomo_path, dir_names[i] + tomo_format)) as f:
-                        self.origin.append(f.data)
+                tomo_paths = [os.path.join(tomo_path, dir_names[i] + tomo_format) for i in self.data_range]
+                print(tomo_paths)
+                with ThreadPoolExecutor(min(len(tomo_paths), 8)) as ex:
+                    self.origin = list(ex.map(_load_mrc, tomo_paths))
+                # self.origin = []
+                # for i in self.data_range:
+                #     with mrcfile.open(os.path.join(tomo_path, dir_names[i] + tomo_format)) as f:
+                #         self.origin.append(f.data)
             else:
                 for idx, p_suffix in enumerate(args.input_cat_items):
                     p_suffix = p_suffix.rstrip(',')
@@ -233,10 +242,9 @@ class Dataset_ClsBased(data.Dataset):
             self.label = [
                 np.zeros_like(self.origin[idx]) for idx, _ in enumerate(self.data_range)]
         else:
-            self.label = []
-            for idx in self.data_range:
-                with mrcfile.open(os.path.join(label_path, dir_names[idx] + tomo_format)) as f:
-                    self.label.append(f.data)
+            label_paths = [os.path.join(label_path, dir_names[i] + tomo_format) for i in self.data_range]
+            with ThreadPoolExecutor(min(len(label_paths), 8)) as ex:
+                self.label = list(ex.map(_load_mrc, label_paths))
 
         # load paf
         if self.use_paf:

@@ -15,7 +15,7 @@ from utils.loss import DiceLoss
 from utils.metrics import seg_metrics
 from utils.colors import COLORS
 from model.model_loader import get_model
-from utils.misc import combine, cal_metrics_NMS_OneCls, get_centroids, cal_metrics_MultiCls, combine_torch
+from utils.misc import combine, cal_metrics_NMS_OneCls, get_centroids, cal_metrics_MultiCls, combine_torch, de_dup
 from sklearn.metrics import precision_recall_fscore_support
 import time
 import json
@@ -27,8 +27,7 @@ if not sys.warnoptions:
 
 
 class UNetExperiment(pl.LightningModule):
-    def __init__(self, args):
-
+    def __init__(self, args, cfg=None):
 
         super(UNetExperiment, self).__init__()
         self.save_hyperparameters()
@@ -43,17 +42,88 @@ class UNetExperiment(pl.LightningModule):
             self.thresholds = np.linspace(0.2, 0.80, 13)
         self.partical_volume = 4 / 3 * np.pi * (args.label_diameter / 2) ** 3
         self.args = args
+        self.cfg = cfg
+        self.pad_size = args.pad_size[0] if isinstance(args.pad_size, list) else args.pad_size
 
         self.validation_step_outputs = []
+        self.test_step_outputs = []
 
     def forward(self, x):
         return self.model(x)
+
+    def _forward_seg(self, img):
+        if self.args.use_paf:
+            seg_output, paf_output, logsigma1 = self.model(img)
+            return seg_output
+        return self.model(img)
+
+    def _predict_coords(self, seg_output, index, mp_num):
+        args = self.args
+        if args.num_classes > 1:
+            return self._nms_v2(seg_output[:, 1:], kernel=args.meanPool_kernel, mp_num=mp_num, positions=index)
+        else:
+            return self._nms_v2(seg_output[:, :], kernel=args.meanPool_kernel, mp_num=mp_num, positions=index)
+
+    def _test_mp_num(self):
+        args = self.args
+        return int(sorted(int(i) for i in self.cfg["ocp_diameter"].split(','))[-1]
+                   / (args.meanPool_kernel - 1) + 1)
+
+    def _log_localization_metrics(self, coords_out):
+        args = self.args
+        if args.num_classes == 1:
+            if coords_out.shape[0] > 50000:
+                loc_p, loc_r, loc_f1, avg_dist = 1e-10, 1e-10, 1e-10, 100
+            else:
+                loc_p, loc_r, loc_f1, avg_dist = \
+                    cal_metrics_NMS_OneCls(coords_out,
+                                           self.gt_coords,
+                                           self.occupancy_map,
+                                           self.cfg['ocp_diameter'],
+                                           )
+            print("*" * 100)
+            print(f"Precision:{loc_p}")
+            print(f"Recall:{loc_r}")
+            print(f"F1-score:{loc_f1}")
+            print(f"Avg-dist:{avg_dist}")
+            print("*" * 100)
+            self.log('cls_precision', loc_p, on_step=False, on_epoch=True)
+            self.log('cls_recall', loc_r, on_step=False, on_epoch=True)
+            self.log('cls_f1', loc_f1, on_step=False, on_epoch=True)
+            self.log('cls_dist', avg_dist, on_step=False, on_epoch=True)
+            pr = (loc_p * (loc_r ** args.prf1_alpha)) / (loc_p + (loc_r ** args.prf1_alpha) + 1e-10)
+            self.log(f'cls_pr_alpha{args.prf1_alpha:.1f}', pr, on_step=False, on_epoch=True)
+            time.sleep(0.5)
+        else:
+            loc_p, loc_r, loc_f1, loc_miss, avg_dist, gt_classes, pred_classes, self.num2pdb, cls_f1 = \
+                cal_metrics_MultiCls(coords_out, self.gt_coords, self.occupancy_map, self.cfg, args,
+                                     self.pad_size, self.dir_name, self.partical_volume)
+            self.log('cls_f1', cls_f1, on_step=False, on_epoch=True)
+
+    def _make_dataset(self, mode, block_size, test_use_pad=False, pad_size=18):
+        args = self.args
+        return Dataset_ClsBased(mode=mode,
+                                block_size=block_size,
+                                num_class=args.num_classes,
+                                random_num=args.random_num,
+                                use_bg=args.use_bg,
+                                data_split=args.data_split,
+                                test_use_pad=test_use_pad,
+                                pad_size=pad_size,
+                                use_paf=args.use_paf,
+                                cfg=self.cfg,
+                                args=args)
+
+    def _make_loader(self, dataset, batch_size, shuffle, **kw):
+        opts = dict(num_workers=8 if batch_size >= 32 else 4, pin_memory=True, persistent_workers=True)
+        opts.update(kw)
+        return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, **opts)
 
     def training_step(self, train_batch, batch_idx):
         args = self.args
         img, label, index = train_batch
         img = img.to(torch.float32)
-        seg_output = self.forward(img)
+        seg_output = self._forward_seg(img)
         if args.use_mask:
             mask = label.clone().detach()
             mask[mask > 0] = 1
@@ -76,7 +146,7 @@ class UNetExperiment(pl.LightningModule):
             img, label, index = val_batch
             index = torch.cat([i.view(1, -1) for i in index], dim=0).permute(1, 0)
             img = img.to(torch.float32)
-            self.seg_output = self.forward(img)
+            self.seg_output = self._forward_seg(img)
 
             if (batch_idx >= self.len_block // args.batch_size and args.test_mode == "test_val") or \
                     args.test_mode == "test" or args.test_mode == "val" or args.test_mode == "val_v1":
@@ -134,10 +204,7 @@ class UNetExperiment(pl.LightningModule):
 
                     tensorboard.add_image('img_label_seg', img_label_seg, self.current_epoch, dataformats="CHW")
 
-            if args.num_classes > 1:
-                nms_out = self._nms_v2(self.seg_output[:, 1:], kernel=args.meanPool_kernel, mp_num=6, positions=index)
-            else:
-                nms_out = self._nms_v2(self.seg_output[:, :], kernel=args.meanPool_kernel, mp_num=6, positions=index)
+            nms_out = self._predict_coords(self.seg_output, index, mp_num=6)
 
             if 'test' in args.test_mode:
                 self.validation_step_outputs.append(nms_out)
@@ -149,70 +216,21 @@ class UNetExperiment(pl.LightningModule):
         with torch.no_grad():
             if 'test' in args.test_mode:
                 if args.meanPool_NMS:
-                    if args.num_classes == 1:
-                        # coords_out: [N, 5]
-                        coords_out = torch.cat(self.validation_step_outputs, dim=0).detach().cpu().numpy()
-                        if coords_out.shape[0] > 50000:
-                            loc_p, loc_r, loc_f1, avg_dist = 1e-10, 1e-10, 1e-10, 100
-                        else:
-                            loc_p, loc_r, loc_f1, avg_dist = \
-                                cal_metrics_NMS_OneCls(coords_out,
-                                                       self.gt_coords,
-                                                       self.occupancy_map,
-                                                       self.cfg,
-                                                       )
-                        print("*" * 100)
-                        print(f"Precision:{loc_p}")
-                        print(f"Recall:{loc_r}")
-                        print(f"F1-score:{loc_f1}")
-                        print(f"Avg-dist:{avg_dist}")
-                        print("*" * 100)
-                        self.log('cls_precision', loc_p, on_step=False, on_epoch=True)
-                        self.log('cls_recall', loc_r, on_step=False, on_epoch=True)
-                        self.log('cls_f1', loc_f1, on_step=False, on_epoch=True)
-                        self.log('cls_dist', avg_dist, on_step=False, on_epoch=True)
-                        pr = (loc_p * (loc_r ** args.prf1_alpha)) / (loc_p + (loc_r ** args.prf1_alpha) + 1e-10)
-                        self.log(f'cls_pr_alpha{args.prf1_alpha:.1f}', pr, on_step=False, on_epoch=True)
-                        time.sleep(0.5)
-                    else:
-                        coords_out = torch.cat(self.validation_step_outputs, dim=0).detach().cpu().numpy()
-                        loc_p, loc_r, loc_f1, loc_miss, avg_dist, gt_classes, pred_classes, self.num2pdb, cls_f1 = \
-                            cal_metrics_MultiCls(coords_out, self.gt_coords, self.occupancy_map, self.cfg, args,
-                                                 args.pad_size, self.dir_name, self.partical_volume)
-                        self.log('cls_f1', cls_f1, on_step=False, on_epoch=True)
+                    # coords_out: [N, 5]
+                    coords_out = torch.cat(self.validation_step_outputs, dim=0).detach().cpu().numpy()
+                    self._log_localization_metrics(coords_out)
             self.validation_step_outputs.clear()
 
     def train_dataloader(self):
         args = self.args
-        train_dataset = Dataset_ClsBased(mode=args.train_mode,
-                                         block_size=args.block_size,
-                                         num_class=args.num_classes,
-                                         random_num=args.random_num,
-                                         use_bg=args.use_bg,
-                                         data_split=args.data_split,
-                                         use_paf=args.use_paf,
-                                         cfg=args.cfg,
-                                         args=args)
-        return DataLoader(train_dataset,
-                          batch_size=args.batch_size,
-                          num_workers=8 if args.batch_size >= 32 else 4,
-                          shuffle=True,
-                          pin_memory=True,
-                          persistent_workers=True)
+        train_dataset = self._make_dataset(args.train_mode, args.block_size)
+        return self._make_loader(train_dataset, args.batch_size, shuffle=True)
 
     def val_dataloader(self):
         args = self.args
-        val_dataset = Dataset_ClsBased(mode=args.test_mode,
-                                       block_size=args.val_block_size,
-                                       num_class=args.num_classes,
-                                       random_num=args.random_num,
-                                       use_bg=args.use_bg,
-                                       data_split=args.data_split,
-                                       test_use_pad=args.test_use_pad,
-                                       pad_size=args.pad_size,
-                                       use_paf=args.use_paf,
-                                       cfg=args.cfg,
-                                       args=args)
+        val_dataset = self._make_dataset(args.test_mode, args.val_block_size,
+                                         test_use_pad=args.test_use_pad,
+                                         pad_size=self.pad_size)
 
         self.len_block = val_dataset.test_len
         if 'test' in args.test_mode:
@@ -221,13 +239,81 @@ class UNetExperiment(pl.LightningModule):
             self.gt_coords = val_dataset.gt_coords
             self.dir_name = val_dataset.dir_name
 
-        val_dataloader1 = DataLoader(val_dataset,
-                                     batch_size=args.val_batch_size,
-                                     num_workers=8 if args.batch_size >= 32 else 4,
-                                     shuffle=False,
-                                     pin_memory=True,
-                                     persistent_workers=True)
-        return val_dataloader1
+        return self._make_loader(val_dataset, args.val_batch_size, shuffle=False)
+
+    def test_step(self, test_batch, batch_idx):
+        args = self.args
+        with torch.no_grad():
+            img, label, index = test_batch
+            index = torch.cat([i.view(1, -1) for i in index], dim=0).permute(1, 0)
+            seg_output = self._forward_seg(img)
+
+            if not args.test_use_pad:
+                return None
+            coords_out = self._predict_coords(seg_output, index, mp_num=self._test_mp_num())
+            self.test_step_outputs.append(coords_out)
+            return coords_out
+
+    def on_test_epoch_end(self):
+        args = self.args
+        with torch.no_grad():
+            if args.meanPool_NMS:
+                coords_out = torch.cat(self.test_step_outputs, dim=0).detach().cpu().numpy()
+                print('coords_out:', coords_out.shape)
+                centroids = de_dup(coords_out, args) if args.de_duplication else coords_out
+
+                out_dir = '/'.join(args.checkpoints.split('/')[:-2]) + f'/{args.out_name}'
+                os.makedirs(os.path.join(out_dir, 'Coords_withArea'), exist_ok=True)
+                np.savetxt(os.path.join(out_dir, 'Coords_withArea', self.dir_name + '.coords'),
+                           centroids.astype(float),
+                           fmt='%s',
+                           delimiter='\t')
+
+                coords = centroids[:, 0:4]
+                os.makedirs(os.path.join(out_dir, 'Coords_All'), exist_ok=True)
+                np.savetxt(os.path.join(out_dir, 'Coords_All', self.dir_name + '.coords'),
+                           coords.astype(int),
+                           fmt='%s',
+                           delimiter='\t')
+
+                if getattr(self, 'gt_coords', None) is not None:
+                    self._log_localization_metrics(coords_out)
+            self.test_step_outputs.clear()
+
+    def test_dataloader(self):
+        args = self.args
+        if args.test_mode == 'test':
+            test_dataset = self._make_dataset('test', args.block_size,
+                                              test_use_pad=args.test_use_pad,
+                                              pad_size=self.pad_size)
+            loader = self._make_loader(test_dataset, args.batch_size, shuffle=False,
+                                       pin_memory=False, persistent_workers=False)
+
+            self.len_block = test_dataset.test_len
+            self.data_shape = test_dataset.data_shape
+            self.occupancy_map = test_dataset.occupancy_map
+            self.gt_coords = test_dataset.gt_coords
+            self.dir_name = test_dataset.dir_name
+            return loader
+        elif args.test_mode == 'test_only':
+            test_dataset = self._make_dataset('test_only', args.block_size,
+                                              test_use_pad=args.test_use_pad,
+                                              pad_size=self.pad_size)
+            if args.batch_size <= 32:
+                num_work = 4
+            elif args.batch_size <= 64:
+                num_work = 8
+            elif args.batch_size <= 128:
+                num_work = 8
+            else:
+                num_work = 16
+            loader = self._make_loader(test_dataset, args.batch_size, shuffle=False,
+                                       num_workers=num_work, pin_memory=False, persistent_workers=False)
+
+            self.len_block = test_dataset.test_len
+            self.data_shape = test_dataset.data_shape
+            self.dir_name = test_dataset.dir_name
+            return loader
 
     def _nms_v2(self, pred, kernel=3, mp_num=5, positions=None):
         args = self.args
@@ -243,18 +329,18 @@ class UNetExperiment(pl.LightningModule):
         coords = keep.nonzero()  # [N, 5]
         if coords.shape[0] > 2000:
             return torch.zeros([1, 5]).to(self.device)
-        coords = coords[coords[:, 2] >= args.pad_size]
-        coords = coords[coords[:, 2] < args.block_size - args.pad_size]
-        coords = coords[coords[:, 3] >= args.pad_size]
-        coords = coords[coords[:, 3] < args.block_size - args.pad_size]
-        coords = coords[coords[:, 4] >= args.pad_size]
-        coords = coords[coords[:, 4] < args.block_size - args.pad_size]
+        coords = coords[coords[:, 2] >= self.pad_size]
+        coords = coords[coords[:, 2] < args.block_size - self.pad_size]
+        coords = coords[coords[:, 3] >= self.pad_size]
+        coords = coords[coords[:, 3] < args.block_size - self.pad_size]
+        coords = coords[coords[:, 4] >= self.pad_size]
+        coords = coords[coords[:, 4] < args.block_size - self.pad_size]
 
         try:
             h_val = torch.cat(
                 [hmax[item[0], item[1], item[2], item[3]:item[3] + 1, item[4]:item[4] + 1] for item in
                  coords], dim=0)
-            leftTop_coords = positions[coords[:, 0]] - (args.block_size // 2) - args.pad_size
+            leftTop_coords = positions[coords[:, 0]] - (args.block_size // 2) - self.pad_size
             coords[:, 2:5] = coords[:, 2:5] + leftTop_coords
 
             pred_final = torch.cat(
@@ -322,7 +408,12 @@ def train_func(args, stdout=None):
                                               monitor='val_loss',
                                               mode='min')
 
-    model = UNetExperiment(args)
+    cfg = getattr(args, 'cfg', None)
+    if cfg is None:
+        with open(args.configs, 'r') as f:
+            cfg = json.loads(''.join(f.readlines()).lstrip('train_configs='))
+
+    model = UNetExperiment(args, cfg=cfg)
     logger_name = "{}_{}_BlockSize{}_{}Loss_MaxEpoch{}_bs{}_lr{}_IP{}_bg{}_coord{}_Softmax{}_{}_{}_TN{}".format(
         model.args.dset_name, args.network, args.block_size, args.loss_func_seg, args.max_epoch,
         args.batch_size,
